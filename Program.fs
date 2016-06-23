@@ -29,6 +29,8 @@ module Program =
 
     let weatherApiBaseUri = "http://api.openweathermap.org/data/2.5/"
 
+    let baseQuery = ["APPID", weatherApiKey; "units", "imperial"]
+
     type Lat = Lat of float
     type Lon = Lon of float
 
@@ -36,21 +38,17 @@ module Program =
         | Zip of IActorRef * string
         | Coords of IActorRef * Lat * Lon
 
-    type WeatherRes = 
-        | Weather of IActorRef * string
-
     let handleWeatherReq (mailbox: Actor<'a>) msg =
         let uri = weatherApiBaseUri + "weather"
-        match msg with
-        | Zip (aref, z) -> 
-            let q = ["zip", z; "APPID", weatherApiKey; "units", "imperial"]
-            let res = Http.RequestString(uri, query=q)
-            mailbox.Sender() <! Weather(mailbox.Self, res)
-        | Coords (aref, Lat lat, Lon lon) -> 
-            let q = ["lat", lat.ToString(); "lon", lon.ToString(); "APPID", weatherApiKey; "units", "imperial"]
-            let res = Http.RequestString(uri, query=q)
-            mailbox.Sender() <! Weather(mailbox.Self, res)
-
+        let q = 
+            match msg with
+            | Zip (aref, z) -> 
+                ["zip", z]
+            | Coords (aref, Lat lat, Lon lon) -> 
+                ["lat", lat.ToString(); "lon", lon.ToString()]
+            |> List.append baseQuery 
+        Http.AsyncRequestString(uri, query=q)
+        |!> mailbox.Sender()
 
     [<EntryPoint>]
     let main argv =
@@ -60,10 +58,7 @@ module Program =
             fun (ctx:HttpContext) -> async {
                 let aref = select "akka://my-system/user/weather-req" system
                 let caller = system.ActorOf(Props.Empty)
-                let! (task:WeatherRes) = (aref <? Zip(caller, (sprintf "%s,us" zip)))
-                let res = 
-                    match task with 
-                    | Weather (_, r) -> r
+                let! (res:string) = (aref <? Zip(caller, (sprintf "%s,us" zip)))
                 return! OK (res) ctx
             }
 
