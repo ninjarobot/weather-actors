@@ -117,7 +117,7 @@ module Program =
             choose
                 [ GET >=> pathScan "/current/%s" currentWeatherHere >=> setMimeType "application/json;charset=utf-8" ]
 
-        let aref1 = spawn system "weather-req" (actorOf2 handleWeatherReq)
+        let aref1 = spawnOpt system "weather-req" (actorOf2 handleWeatherReq) [SpawnOption.Router(Akka.Routing.RoundRobinPool(5))]
         let aref2 = spawn system "convert-weather" (actorOf2 convertWeatherReq)
         startWebServer defaultConfig app
         0
