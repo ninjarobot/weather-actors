@@ -36,6 +36,7 @@ module Program =
 
     type WeatherReq = 
         | Zip of IActorRef * string
+        | City of IActorRef * string
         | Coords of IActorRef * Lat * Lon
 
     type OpenWeatherMapCurrent = JsonProvider<"""{"coord":
@@ -67,6 +68,8 @@ module Program =
             match msg with
             | Zip (aref, z) -> 
                 ["zip", z]
+            | City (aref, c) -> 
+                ["q", c]
             | Coords (aref, Lat lat, Lon lon) -> 
                 ["lat", lat.ToString(); "lon", lon.ToString()]
             |> List.append baseQuery 
@@ -103,19 +106,34 @@ module Program =
     [<EntryPoint>]
     let main argv =
 
-        let currentWeatherHere zip =
+        let currWeatherActor = select "akka://my-system/user/weather-req" system
+        let convertWeatherActor = select "akka://my-system/user/convert-weather" system
+
+        let currentWeatherZip zip =
             fun (ctx:HttpContext) -> async {
-                let currWeatherActor = select "akka://my-system/user/weather-req" system
-                let convertWeatherActor = select "akka://my-system/user/convert-weather" system
                 let caller = system.ActorOf(Props.Empty)
                 let! (res:string) = currWeatherActor <? Zip(caller, (sprintf "%s,us" zip))
                 let! (converted:string) = convertWeatherActor <? res
                 return! OK (converted) ctx
             }
 
+        let currentWeatherCity city =
+            fun (ctx:HttpContext) -> async {
+                let caller = system.ActorOf(Props.Empty)
+                let! (res:string) = currWeatherActor <? City(caller, (sprintf "%s,us" city))
+                let! (converted:string) = convertWeatherActor <? res
+                return! OK (converted) ctx
+            }
+
         let app =
             choose
-                [ GET >=> pathScan "/current/%s" currentWeatherHere >=> setMimeType "application/json;charset=utf-8" ]
+                [ GET >=>
+                    choose
+                        [ 
+                            pathScan "/current/zip/%s" currentWeatherZip >=> setMimeType "application/json;charset=utf-8"
+                            pathScan "/current/city/%s" currentWeatherCity >=> setMimeType "application/json;charset=utf-8"
+                        ]
+                ]
 
         let aref1 = spawnOpt system "weather-req" (actorOf2 handleWeatherReq) [SpawnOption.Router(Akka.Routing.RoundRobinPool(5))]
         let aref2 = spawn system "convert-weather" (actorOf2 convertWeatherReq)
