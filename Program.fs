@@ -35,9 +35,9 @@ module Program =
     type Lon = Lon of float
 
     type WeatherReq = 
-        | Zip of IActorRef * string
-        | City of IActorRef * string
-        | Coords of IActorRef * Lat * Lon
+        | Zip of string
+        | City of string
+        | Coords of Lat * Lon
 
     type OpenWeatherMapCurrent = JsonProvider<"""{"coord":
         {"lon":145.77,"lat":-16.92},
@@ -66,11 +66,11 @@ module Program =
         let uri = weatherApiBaseUri + "weather"
         let q = 
             match msg with
-            | Zip (aref, z) -> 
+            | Zip z -> 
                 ["zip", z]
-            | City (aref, c) -> 
+            | City c -> 
                 ["q", c]
-            | Coords (aref, Lat lat, Lon lon) -> 
+            | Coords (Lat lat, Lon lon) -> 
                 ["lat", lat.ToString(); "lon", lon.ToString()]
             |> List.append baseQuery 
         Http.AsyncRequestString(uri, query=q)
@@ -111,16 +111,14 @@ module Program =
 
         let currentWeatherZip zip =
             fun (ctx:HttpContext) -> async {
-                let caller = system.ActorOf(Props.Empty)
-                let! (res:string) = currWeatherActor <? Zip(caller, (sprintf "%s,us" zip))
+                let! (res:string) = currWeatherActor <? Zip(sprintf "%s,us" zip)
                 let! (converted:string) = convertWeatherActor <? res
                 return! OK (converted) ctx
             }
 
         let currentWeatherCity city =
             fun (ctx:HttpContext) -> async {
-                let caller = system.ActorOf(Props.Empty)
-                let! (res:string) = currWeatherActor <? City(caller, (sprintf "%s,us" city))
+                let! (res:string) = currWeatherActor <? City(sprintf "%s,us" city)
                 let! (converted:string) = convertWeatherActor <? res
                 return! OK (converted) ctx
             }
