@@ -59,6 +59,8 @@ module Program =
         Temperature : decimal
         Humidity : int
         City : string
+        Sunrise : System.DateTime
+        Sunset : System.DateTime
     }
 
     let handleWeatherReq (mailbox: Actor<'a>) msg =
@@ -77,6 +79,11 @@ module Program =
         |!> mailbox.Sender()
 
     let convertWeatherReq (mailbox: Actor<obj>) msg =
+
+        let toDateTime unixTime =
+            let epoch = System.DateTime(1970, 1, 1, 0, 0, 0, 0, System.DateTimeKind.Utc)
+            epoch.AddSeconds(unixTime).ToLocalTime()
+
         match box msg with
         | :? string as currWeatherRes ->
             let res = sprintf "%s" currWeatherRes
@@ -84,14 +91,13 @@ module Program =
             let w = res |> OpenWeatherMapCurrent.Parse
             match w.Cod with
             | 200 ->
-                match w.Weather with 
-                | [|weather|] -> 
-                    let d = weather.Description
-                    let t = w.Main.Temp
-                    let h = w.Main.Humidity
-                    let city = w.Name
-                    mailbox.Sender() <! (Newtonsoft.Json.JsonConvert.SerializeObject <| { Description=d; Temperature=t; Humidity=h; City=city })
-                | _ -> mailbox.Unhandled()
+                let d = w.Weather |> Array.map(fun weather -> weather.Description) |> String.concat ", "
+                let t = w.Main.Temp
+                let h = w.Main.Humidity
+                let city = w.Name
+                let sunrise = w.Sys.Sunrise |> float |> toDateTime
+                let sunset = w.Sys.Sunset |> float |> toDateTime
+                mailbox.Sender() <! (Newtonsoft.Json.JsonConvert.SerializeObject <| { Description=d; Temperature=t; Humidity=h; City=city; Sunrise=sunrise; Sunset=sunset })
             | 404 ->
                 mailbox.Sender() <! w.Message
             | _ ->
